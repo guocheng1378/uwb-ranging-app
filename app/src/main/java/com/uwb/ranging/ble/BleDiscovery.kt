@@ -55,22 +55,37 @@ class BleDiscovery(private val context: Context) {
     private var scanCallback: ScanCallback? = null
     private var advertiseCallback: AdvertiseCallback? = null
 
+    private fun safeAdvertiser(): BluetoothLeAdvertiser? {
+        return try {
+            bluetoothAdapter?.bluetoothLeAdvertiser
+        } catch (e: Exception) {
+            Log.w(TAG, "获取 Advertiser 失败: ${e.message}")
+            null
+        }
+    }
+
+    private fun safeScanner(): BluetoothLeScanner? {
+        return try {
+            bluetoothAdapter?.bluetoothLeScanner
+        } catch (e: Exception) {
+            Log.w(TAG, "获取 Scanner 失败: ${e.message}")
+            null
+        }
+    }
+
     /**
      * 开始 BLE 扫描，发现附近同 App 设备
      */
     fun startScanning() {
         if (_isScanning.value) return
-        val scanner = bleScanner
+        val scanner = safeScanner()
         if (scanner == null) {
             Log.e(TAG, "BLE Scanner 不可用")
             return
         }
 
         try {
-            val scanFilter = ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(SERVICE_UUID))
-                .build()
-
+            // 小米等设备可能不支持带 UUID 的 ScanFilter，降级为无过滤扫描
             val scanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build()
@@ -80,6 +95,15 @@ class BleDiscovery(private val context: Context) {
                     val device = result.device
                     val name = device.name ?: "未知设备"
                     val address = device.address
+
+                    // 无过滤模式下，手动检查是否是我们 App 的设备
+                    val serviceUuids = result.scanRecord?.serviceUuids
+                    val isOurDevice = serviceUuids?.any { it.uuid == SERVICE_UUID } == true
+                            || result.scanRecord?.serviceData?.keys?.any { it.uuid == SERVICE_UUID } == true
+                            || result.scanRecord?.advertiseFlags?.let { true } == true
+
+                    // 放宽过滤：只要广播中包含我们的 UUID 或者设备名不为空就显示
+                    if (!isOurDevice && serviceUuids != null) return
 
                     val discovered = DiscoveredDevice(
                         address = address,
@@ -100,7 +124,16 @@ class BleDiscovery(private val context: Context) {
                 }
             }
 
-            scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            // 先尝试带 UUID 过滤的扫描，失败则降级为无过滤扫描
+            try {
+                val scanFilter = ScanFilter.Builder()
+                    .setServiceUuid(ParcelUuid(SERVICE_UUID))
+                    .build()
+                scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            } catch (e: Exception) {
+                Log.w(TAG, "带 UUID 过滤扫描失败，降级为无过滤: ${e.message}")
+                scanner.startScan(scanCallback)
+            }
             _isScanning.value = true
             Log.d(TAG, "开始 BLE 扫描")
         } catch (e: SecurityException) {
@@ -134,9 +167,9 @@ class BleDiscovery(private val context: Context) {
      */
     fun startAdvertising() {
         if (_isAdvertising.value) return
-        val adv = advertiser
+        val adv = safeAdvertiser()
         if (adv == null) {
-            Log.e(TAG, "BLE Advertiser 不可用")
+            Log.w(TAG, "BLE Advertiser 不可用，跳过广播（仅接收模式）")
             return
         }
 
@@ -159,21 +192,26 @@ class BleDiscovery(private val context: Context) {
                 }
 
                 override fun onStartFailure(errorCode: Int) {
-                    Log.e(TAG, "BLE 广播失败: $errorCode")
+                    Log.w(TAG, "BLE 广播失败: $errorCode，继续扫描模式")
                     _isAdvertising.value = false
+                    advertiseCallback = null
                 }
             }
 
             adv.startAdvertising(settings, data, advertiseCallback)
         } catch (e: SecurityException) {
-            Log.e(TAG, "缺少蓝牙权限", e)
+            Log.w(TAG, "缺少蓝牙广播权限，跳过广播", e)
             advertiseCallback = null
+            _isAdvertising.value = false
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "蓝牙未开启或不可用", e)
+            Log.w(TAG, "蓝牙未开启或不支持广播，跳过", e)
             advertiseCallback = null
+            _isAdvertising.value = false
         } catch (e: Exception) {
-            Log.e(TAG, "广播启动异常", e)
+            // 小米等设备可能在这里崩溃，全面兜底
+            Log.w(TAG, "广播启动异常，跳过: ${e.message}", e)
             advertiseCallback = null
+            _isAdvertising.value = false
         }
     }
 

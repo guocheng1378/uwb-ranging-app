@@ -31,9 +31,17 @@ class MainActivity : ComponentActivity() {
             }
             add(Manifest.permission.ACCESS_FINE_LOCATION)
             add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            // Android 13+ 附近设备权限（小米澎湃必须）
+            if (Build.VERSION.SDK_INT >= 33) {
+                add("android.permission.NEARBY_WIFI_DEVICES")
+            }
             // UWB_RANGING 需要 API 33+ (Android 13)
             if (Build.VERSION.SDK_INT >= 33) {
                 add("android.permission.UWB_RANGING")
+            }
+            // Android 16+ RANGING 权限
+            if (Build.VERSION.SDK_INT >= 36) {
+                add("android.permission.RANGING")
             }
         }.toTypedArray()
 

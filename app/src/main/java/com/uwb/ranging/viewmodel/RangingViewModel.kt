@@ -100,7 +100,13 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
             add(Manifest.permission.ACCESS_FINE_LOCATION)
             add(Manifest.permission.ACCESS_COARSE_LOCATION)
             if (Build.VERSION.SDK_INT >= 33) {
+                add("android.permission.NEARBY_WIFI_DEVICES")
+            }
+            if (Build.VERSION.SDK_INT >= 33) {
                 add("android.permission.UWB_RANGING")
+            }
+            if (Build.VERSION.SDK_INT >= 36) {
+                add("android.permission.RANGING")
             }
         }.toTypedArray()
         return permissions.all { hasPermission(it) }

@@ -50,7 +50,10 @@ fun DeviceDiscoveryScreen(
                 androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) == android.content.pm.PackageManager.PERMISSION_GRANTED
             } else true
             val location = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            bluetoothScan && bluetoothConnect && bluetoothAdvertise && location
+            val nearbyWifi = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                androidx.core.content.ContextCompat.checkSelfPermission(context, "android.permission.NEARBY_WIFI_DEVICES") == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else true
+            bluetoothScan && bluetoothConnect && bluetoothAdvertise && location && nearbyWifi
         }
     }.value
 
