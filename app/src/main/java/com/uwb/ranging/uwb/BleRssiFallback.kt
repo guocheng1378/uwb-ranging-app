@@ -35,7 +35,15 @@ class BleRssiFallback(private val context: Context) : RangingProtocol {
     private val historySize = 10
 
     override suspend fun isAvailable(): Boolean {
-        return bluetoothAdapter?.bluetoothLeScanner != null
+        return try {
+            bluetoothAdapter?.bluetoothLeScanner != null
+        } catch (e: SecurityException) {
+            Log.w(TAG, "检查 BLE 可用性需要权限", e)
+            false
+        } catch (e: Exception) {
+            Log.w(TAG, "检查 BLE 可用性异常", e)
+            false
+        }
     }
 
     @SuppressLint("MissingPermission")

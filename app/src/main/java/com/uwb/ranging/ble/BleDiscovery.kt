@@ -206,9 +206,25 @@ class BleDiscovery(private val context: Context) {
         clearDevices()
     }
 
-    fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
+    fun isBluetoothEnabled(): Boolean {
+        return try {
+            bluetoothAdapter?.isEnabled == true
+        } catch (e: SecurityException) {
+            Log.w(TAG, "检查蓝牙状态需要权限", e)
+            false
+        } catch (e: Exception) {
+            Log.w(TAG, "检查蓝牙状态异常", e)
+            false
+        }
+    }
 
-    fun hasBluetoothLe(): Boolean = context.packageManager.hasSystemFeature(
-        android.content.pm.PackageManager.FEATURE_BLUETOOTH_LE
-    ) && bluetoothAdapter != null
+    fun hasBluetoothLe(): Boolean {
+        return try {
+            context.packageManager.hasSystemFeature(
+                android.content.pm.PackageManager.FEATURE_BLUETOOTH_LE
+            ) && bluetoothAdapter != null
+        } catch (e: Exception) {
+            false
+        }
+    }
 }

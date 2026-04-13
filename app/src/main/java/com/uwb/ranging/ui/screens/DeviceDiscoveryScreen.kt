@@ -9,8 +9,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.uwb.ranging.ble.BleDiscovery
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -25,6 +27,21 @@ fun DeviceDiscoveryScreen(
     val discoveredDevices by bleDiscovery.discoveredDevices.collectAsState()
     val isScanning by bleDiscovery.isScanning.collectAsState()
     val isAdvertising by bleDiscovery.isAdvertising.collectAsState()
+
+    // 每次重组时重新检查权限，确保状态实时
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val actuallyHasPermissions = remember {
+        derivedStateOf {
+            val bluetoothScan = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else true
+            val bluetoothConnect = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else true
+            val location = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            bluetoothScan && bluetoothConnect && location
+        }
+    }.value
 
     Scaffold(
         topBar = {

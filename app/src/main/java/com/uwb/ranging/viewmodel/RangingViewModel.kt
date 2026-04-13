@@ -54,14 +54,19 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
 
     private fun checkPermissions() {
         viewModelScope.launch {
-            val protocols = uwbManager.checkAvailability()
-            _availableProtocols.value = protocols
-            Log.d(TAG, "可用协议: $protocols")
+            try {
+                val protocols = uwbManager.checkAvailability()
+                _availableProtocols.value = protocols
+                Log.d(TAG, "可用协议: $protocols")
 
-            val hasAnyProtocol = protocols.values.any { it }
-            if (!hasAnyProtocol) {
-                _appState.value = AppState.ERROR
-                _errorMessage.value = "无可用测距协议（需要 UWB 硬件或 BLE）"
+                val hasAnyProtocol = protocols.values.any { it }
+                if (!hasAnyProtocol) {
+                    _appState.value = AppState.ERROR
+                    _errorMessage.value = "无可用测距协议（需要 UWB 硬件或 BLE）"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "检查协议可用性失败", e)
+                _availableProtocols.value = mapOf("BLE RSSI 估算" to true)
             }
         }
     }
