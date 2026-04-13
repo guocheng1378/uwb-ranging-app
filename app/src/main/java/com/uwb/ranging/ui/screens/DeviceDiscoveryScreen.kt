@@ -28,6 +28,14 @@ fun DeviceDiscoveryScreen(
     val isScanning by bleDiscovery.isScanning.collectAsState()
     val isAdvertising by bleDiscovery.isAdvertising.collectAsState()
 
+    // 蓝牙开启引导
+    val enableBluetoothLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { /* 蓝牙开启结果，用户回来后重新扫描即可 */ }
+    val isBluetoothEnabled = remember {
+        derivedStateOf { bleDiscovery.isBluetoothEnabled() }
+    }.value
+
     // 每次重组时重新检查权限，确保状态实时
     val context = androidx.compose.ui.platform.LocalContext.current
     val actuallyHasPermissions = remember {
@@ -125,6 +133,50 @@ fun DeviceDiscoveryScreen(
                 }
             }
 
+            // 蓝牙未开启提示
+            if (hasPermissions && !isBluetoothEnabled) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.BluetoothDisabled,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "蓝牙未开启",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = "需要开启蓝牙才能扫描附近设备",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(onClick = {
+                            val intent = android.content.Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                            enableBluetoothLauncher.launch(intent)
+                        }) {
+                            Text("开启蓝牙")
+                        }
+                    }
+                }
+            }
+
             // 协议可用性卡片
             if (availableProtocols.isNotEmpty()) {
                 Card(
@@ -192,6 +244,8 @@ fun DeviceDiscoveryScreen(
                                 return@FilledTonalButton
                             }
                             if (!bleDiscovery.isBluetoothEnabled()) {
+                                val intent = android.content.Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                                enableBluetoothLauncher.launch(intent)
                                 return@FilledTonalButton
                             }
                             bleDiscovery.clearDevices()
