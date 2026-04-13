@@ -272,7 +272,7 @@ private fun DeviceCard(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            Column(modifier = Modifier.weight(1)) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = device.name,
                     style = MaterialTheme.typography.titleMedium,
