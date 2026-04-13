@@ -59,8 +59,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // UWB
-    implementation("androidx.core:uwb:1.0.0-rc01")
+    // UWB - 使用平台 API，不需要 AndroidX 库
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.6")
