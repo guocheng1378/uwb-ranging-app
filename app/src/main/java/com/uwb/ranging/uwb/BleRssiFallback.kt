@@ -25,8 +25,8 @@ class BleRssiFallback(private val context: Context) : RangingProtocol {
     override val protocolName = "BLE RSSI 估算"
     override val priority = 10  // 最低优先级
 
-    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    private val bluetoothAdapter = bluetoothManager.adapter
+    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    private val bluetoothAdapter = bluetoothManager?.adapter
     private var scanner: BluetoothLeScanner? = null
     private var isRunning = false
 
@@ -35,14 +35,23 @@ class BleRssiFallback(private val context: Context) : RangingProtocol {
     private val historySize = 10
 
     override suspend fun isAvailable(): Boolean {
-        return bluetoothAdapter.bluetoothLeScanner != null
+        return bluetoothAdapter?.bluetoothLeScanner != null
     }
 
     @SuppressLint("MissingPermission")
     override suspend fun startRanging(peer: PeerDevice): Flow<RangingData> {
         return channelFlow {
+            val adapter = bluetoothAdapter
+            if (adapter == null) {
+                trySend(RangingData(
+                    isConnected = false,
+                    protocolUsed = protocolName,
+                    errorMessage = "蓝牙不可用"
+                ))
+                return@channelFlow
+            }
             isRunning = true
-            scanner = bluetoothAdapter.bluetoothLeScanner
+            scanner = adapter.bluetoothLeScanner
 
             val filter = ScanFilter.Builder()
                 .setDeviceAddress(peer.address)

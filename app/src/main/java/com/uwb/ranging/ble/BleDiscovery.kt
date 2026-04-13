@@ -18,7 +18,6 @@ import java.util.UUID
  * BLE 设备发现和配对管理器
  * 用于发现附近同样运行此 App 的设备，并交换 UWB 连接信息
  */
-@SuppressLint("MissingPermission")
 class BleDiscovery(private val context: Context) {
 
     companion object {
@@ -36,10 +35,10 @@ class BleDiscovery(private val context: Context) {
         val isUwbCapable: Boolean = true
     )
 
-    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    private val bluetoothAdapter: BluetoothAdapter = bluetoothManager.adapter
-    private val bleScanner: BluetoothLeScanner? = bluetoothAdapter.bluetoothLeScanner
-    private var advertiser: BluetoothLeAdvertiser? = bluetoothAdapter.bluetoothLeAdvertiser
+    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager?.adapter
+    private val bleScanner: BluetoothLeScanner? = bluetoothAdapter?.bluetoothLeScanner
+    private var advertiser: BluetoothLeAdvertiser? = bluetoothAdapter?.bluetoothLeAdvertiser
 
     private val _discoveredDevices = MutableStateFlow<Map<String, DiscoveredDevice>>(emptyMap())
     val discoveredDevices: StateFlow<Map<String, DiscoveredDevice>> = _discoveredDevices.asStateFlow()
@@ -61,6 +60,11 @@ class BleDiscovery(private val context: Context) {
      */
     fun startScanning() {
         if (_isScanning.value) return
+        val scanner = bleScanner
+        if (scanner == null) {
+            Log.e(TAG, "BLE Scanner 不可用")
+            return
+        }
 
         val scanFilter = ScanFilter.Builder()
             .setServiceUuid(ParcelUuid(SERVICE_UUID))
@@ -95,9 +99,17 @@ class BleDiscovery(private val context: Context) {
             }
         }
 
-        bleScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
-        _isScanning.value = true
-        Log.d(TAG, "开始 BLE 扫描")
+        try {
+            scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            _isScanning.value = true
+            Log.d(TAG, "开始 BLE 扫描")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "缺少蓝牙权限", e)
+            scanCallback = null
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "蓝牙未开启或不可用", e)
+            scanCallback = null
+        }
     }
 
     /**
@@ -115,6 +127,11 @@ class BleDiscovery(private val context: Context) {
      */
     fun startAdvertising() {
         if (_isAdvertising.value) return
+        val adv = advertiser
+        if (adv == null) {
+            Log.e(TAG, "BLE Advertiser 不可用")
+            return
+        }
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -139,7 +156,15 @@ class BleDiscovery(private val context: Context) {
             }
         }
 
-        advertiser?.startAdvertising(settings, data, advertiseCallback)
+        try {
+            adv.startAdvertising(settings, data, advertiseCallback)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "缺少蓝牙权限", e)
+            advertiseCallback = null
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "蓝牙未开启或不可用", e)
+            advertiseCallback = null
+        }
     }
 
     /**
@@ -167,9 +192,9 @@ class BleDiscovery(private val context: Context) {
         clearDevices()
     }
 
-    fun isBluetoothEnabled(): Boolean = bluetoothAdapter.isEnabled
+    fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
 
     fun hasBluetoothLe(): Boolean = context.packageManager.hasSystemFeature(
         android.content.pm.PackageManager.FEATURE_BLUETOOTH_LE
-    )
+    ) && bluetoothAdapter != null
 }
