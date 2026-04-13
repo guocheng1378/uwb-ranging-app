@@ -1,6 +1,5 @@
 package com.uwb.ranging.ui.screens
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,16 +13,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.uwb.ranging.ble.BleDiscovery
 
-/**
- * 设备发现屏幕
- * 显示附近同样运行此 App 的设备列表
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceDiscoveryScreen(
     bleDiscovery: BleDiscovery,
     onDeviceSelected: (String) -> Unit,
-    isUwbSupported: Boolean
+    availableProtocols: Map<String, Boolean>
 ) {
     val discoveredDevices by bleDiscovery.discoveredDevices.collectAsState()
     val isScanning by bleDiscovery.isScanning.collectAsState()
@@ -34,7 +29,6 @@ fun DeviceDiscoveryScreen(
             TopAppBar(
                 title = { Text("发现设备") },
                 actions = {
-                    // 广播状态指示
                     if (isAdvertising) {
                         Icon(
                             imageVector = Icons.Rounded.WifiTethering,
@@ -52,31 +46,45 @@ fun DeviceDiscoveryScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // UWB 支持状态卡片
-            if (!isUwbSupported) {
+            // 协议可用性卡片
+            if (availableProtocols.isNotEmpty()) {
                 Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
                 ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "此设备不支持 UWB 或服务不可用",
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodyMedium
+                            text = "测距协议",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        availableProtocols.forEach { (name, available) ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (available) Icons.Rounded.CheckCircle
+                                    else Icons.Rounded.Cancel,
+                                    contentDescription = null,
+                                    tint = if (available) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (available) MaterialTheme.colorScheme.onSecondaryContainer
+                                    else MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -117,16 +125,13 @@ fun DeviceDiscoveryScreen(
 
             // 设备列表
             if (discoveredDevices.isEmpty() && !isScanning) {
-                // 空状态
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             imageVector = Icons.Rounded.BluetoothSearching,
                             contentDescription = null,
@@ -148,16 +153,13 @@ fun DeviceDiscoveryScreen(
                     }
                 }
             } else if (isScanning && discoveredDevices.isEmpty()) {
-                // 扫描中动画
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
@@ -192,17 +194,13 @@ private fun DeviceCard(
     device: BleDiscovery.DiscoveredDevice,
     onClick: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 设备图标
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.primaryContainer,
@@ -231,18 +229,14 @@ private fun DeviceCard(
                 )
             }
 
-            // RSSI 指示
-            Column(
-                horizontalAlignment = Alignment.End
-            ) {
+            Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = "${device.rssi} dBm",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                // 信号强度条
-                SignalBarSimple(rssi = device.rssi)
+                SignalBar(rssi = device.rssi)
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -257,7 +251,7 @@ private fun DeviceCard(
 }
 
 @Composable
-private fun SignalBarSimple(rssi: Int) {
+private fun SignalBar(rssi: Int) {
     val bars = when {
         rssi > -50 -> 4
         rssi > -65 -> 3
@@ -268,25 +262,15 @@ private fun SignalBarSimple(rssi: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
         repeat(4) { index ->
             val height = (6 + index * 3).dp
-            val color = if (index < bars) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.outlineVariant
-            }
-            Box(
+            val color = if (index < bars) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant
+            Surface(
+                color = color,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(1.dp),
                 modifier = Modifier
                     .width(4.dp)
                     .height(height)
-                    .then(
-                        if (index < bars) Modifier else Modifier
-                    )
-            ) {
-                Surface(
-                    color = color,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(1.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {}
-            }
+            ) {}
         }
     }
 }

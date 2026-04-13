@@ -1,10 +1,15 @@
 package com.uwb.ranging.viewmodel
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.uwb.ranging.ble.BleDiscovery
+import com.uwb.ranging.uwb.PeerDevice
 import com.uwb.ranging.uwb.UwbRangingManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -18,7 +23,7 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
     val bleDiscovery = BleDiscovery(application)
     val uwbManager = UwbRangingManager(application)
 
-    // 距离历史记录（最近60个点）
+    // 距离历史记录
     private val _distanceHistory = MutableStateFlow<List<Pair<Long, Double>>>(emptyList())
     val distanceHistory: StateFlow<List<Pair<Long, Double>>> = _distanceHistory.asStateFlow()
 
@@ -30,30 +35,33 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    // UWB 是否可用
-    private val _uwbSupported = MutableStateFlow(false)
-    val uwbSupported: StateFlow<Boolean> = _uwbSupported.asStateFlow()
+    // 可用协议
+    private val _availableProtocols = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val availableProtocols: StateFlow<Map<String, Boolean>> = _availableProtocols.asStateFlow()
 
     enum class AppState {
-        IDLE,           // 空闲
-        SCANNING,       // 扫描设备中
-        CONNECTING,     // 连接中
-        RANGING,        // 测距中
-        ERROR           // 错误
+        IDLE,
+        SCANNING,
+        CONNECTING,
+        RANGING,
+        ERROR
     }
 
     init {
-        checkUwbSupport()
+        checkPermissions()
         observeRangingData()
     }
 
-    private fun checkUwbSupport() {
+    private fun checkPermissions() {
         viewModelScope.launch {
-            val supported = uwbManager.initialize()
-            _uwbSupported.value = supported
-            if (!supported) {
+            val protocols = uwbManager.checkAvailability()
+            _availableProtocols.value = protocols
+            Log.d(TAG, "可用协议: $protocols")
+
+            val hasAnyProtocol = protocols.values.any { it }
+            if (!hasAnyProtocol) {
                 _appState.value = AppState.ERROR
-                _errorMessage.value = "此设备不支持 UWB 或 UWB 服务不可用"
+                _errorMessage.value = "无可用测距协议（需要 UWB 硬件或 BLE）"
             }
         }
     }
@@ -64,19 +72,35 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
                 if (data.isConnected && data.distanceCm > 0) {
                     val current = _distanceHistory.value.toMutableList()
                     current.add(Pair(data.timestamp, data.distanceCm))
-                    // 保留最近 120 个点
-                    if (current.size > 120) {
-                        current.removeAt(0)
-                    }
+                    if (current.size > 120) current.removeAt(0)
                     _distanceHistory.value = current
                 }
             }
         }
     }
 
-    /**
-     * 开始扫描附近设备
-     */
+    fun hasPermission(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(
+            getApplication(), permission
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun hasRequiredPermissions(): Boolean {
+        val permissions = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+                add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            }
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.UWB_RANGING)
+            if (Build.VERSION.SDK_INT >= 33) {  // Android 16 preview may use 33
+                add(Manifest.permission.RANGING)
+            }
+        }
+        return permissions.all { hasPermission(it) }
+    }
+
     fun startDiscovery() {
         if (!bleDiscovery.isBluetoothEnabled()) {
             _errorMessage.value = "请先开启蓝牙"
@@ -92,9 +116,6 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
         Log.d(TAG, "开始设备发现")
     }
 
-    /**
-     * 停止扫描
-     */
     fun stopDiscovery() {
         bleDiscovery.stopAll()
         if (_appState.value == AppState.SCANNING) {
@@ -102,24 +123,24 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    /**
-     * 连接到发现的设备并开始测距
-     */
-    fun connectToDevice(address: String) {
+    fun connectToDevice(address: String, name: String = "未知设备") {
         _appState.value = AppState.CONNECTING
         _errorMessage.value = null
 
-        // 停止扫描
         bleDiscovery.stopAll()
 
         viewModelScope.launch {
             try {
-                // TODO: 通过 BLE 交换 UWB 地址信息后启动测距
-                // 这里简化处理：直接启动为受控端模式
                 _appState.value = AppState.RANGING
-                uwbManager.startRangingAsControlee()
 
-                Log.d(TAG, "已连接到设备: $address")
+                val peer = PeerDevice(
+                    address = address,
+                    name = name,
+                    supportedProtocols = emptySet() // TODO: 从 BLE 协商获取
+                )
+
+                uwbManager.startRanging(peer)
+
             } catch (e: Exception) {
                 Log.e(TAG, "连接失败", e)
                 _appState.value = AppState.ERROR
@@ -128,25 +149,16 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    /**
-     * 停止测距
-     */
     fun stopRanging() {
         uwbManager.stopRanging()
         _appState.value = AppState.IDLE
         _distanceHistory.value = emptyList()
     }
 
-    /**
-     * 清除错误
-     */
     fun clearError() {
         _errorMessage.value = null
     }
 
-    /**
-     * 重置到初始状态
-     */
     fun reset() {
         stopRanging()
         stopDiscovery()

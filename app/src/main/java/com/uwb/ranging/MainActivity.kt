@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,31 +22,30 @@ import com.uwb.ranging.viewmodel.RangingViewModel
 
 class MainActivity : ComponentActivity() {
 
-    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        arrayOf(
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_ADVERTISE,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.UWB_RANGING
-        )
-    } else {
-        arrayOf(
-            Manifest.permission.BLUETOOTH,
-            Manifest.permission.BLUETOOTH_ADMIN,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.UWB_RANGING
-        )
-    }
+    private val requiredPermissions: Array<String>
+        get() = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+                add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            }
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.UWB_RANGING)
+            // Android 16+ 新增的通用测距权限
+            if (Build.VERSION.SDK_INT >= 33) {
+                add(Manifest.permission.RANGING)
+            }
+        }.toTypedArray()
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.values.all { it }
         if (!allGranted) {
+            val denied = permissions.filter { !it.value }.keys
             Toast.makeText(
                 this,
-                "需要蓝牙和位置权限才能使用测距功能",
+                "部分权限被拒绝: ${denied.joinToString()}",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -81,21 +79,20 @@ class MainActivity : ComponentActivity() {
             navController = navController,
             startDestination = "discovery"
         ) {
-            // 设备发现页
             composable("discovery") {
                 DeviceDiscoveryScreen(
                     bleDiscovery = viewModel.bleDiscovery,
                     onDeviceSelected = { address ->
-                        viewModel.connectToDevice(address)
+                        val device = viewModel.bleDiscovery.discoveredDevices.value[address]
+                        viewModel.connectToDevice(address, device?.name ?: "未知设备")
                         navController.navigate("ranging") {
                             launchSingleTop = true
                         }
                     },
-                    isUwbSupported = viewModel.uwbSupported.collectAsState().value
+                    availableProtocols = viewModel.availableProtocols.collectAsState().value
                 )
             }
 
-            // 测距页
             composable("ranging") {
                 RangingScreen(
                     uwbManager = viewModel.uwbManager,

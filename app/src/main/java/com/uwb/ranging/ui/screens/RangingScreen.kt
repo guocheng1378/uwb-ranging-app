@@ -1,6 +1,5 @@
 package com.uwb.ranging.ui.screens
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,14 +16,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.uwb.ranging.ui.components.*
 import com.uwb.ranging.uwb.UwbRangingManager
 
-/**
- * 测距屏幕
- * 实时显示距离、方向、信号强度和历史轨迹
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RangingScreen(
@@ -34,11 +28,24 @@ fun RangingScreen(
 ) {
     val rangingData by uwbManager.rangingData.collectAsState()
     val isRanging by uwbManager.isRanging.collectAsState()
+    val selectedProtocol by uwbManager.selectedProtocol.collectAsState()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("UWB 测距") },
+                title = {
+                    Column {
+                        Text("UWB 测距")
+                        // 显示当前使用的协议
+                        if (selectedProtocol != null) {
+                            Text(
+                                text = selectedProtocol!!,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -77,8 +84,37 @@ fun RangingScreen(
                 }
             }
 
-            // 方向 + 信号强度 并排显示
+            // 当前使用的协议标识
+            if (rangingData.protocolUsed.isNotEmpty()) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        AssistChip(
+                            onClick = {},
+                            label = { Text(rangingData.protocolUsed) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = when (rangingData.protocolUsed) {
+                                        "FiRa 标准 UWB" -> Icons.Rounded.Sensors
+                                        "BLE RSSI 估算" -> Icons.Rounded.Bluetooth
+                                        else -> Icons.Rounded.DeviceHub
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
+            // 方向 + 信号强度并排
             item {
+                Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -86,14 +122,12 @@ fun RangingScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 方向指示器
                     DirectionIndicator(
                         azimuth = rangingData.azimuth,
                         elevation = rangingData.elevation,
                         isConnected = rangingData.isConnected
                     )
 
-                    // 分隔线
                     Divider(
                         modifier = Modifier
                             .height(80.dp)
@@ -101,10 +135,7 @@ fun RangingScreen(
                         color = MaterialTheme.colorScheme.outlineVariant
                     )
 
-                    // 信号强度 + 详细信息
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "信号",
                             style = MaterialTheme.typography.labelMedium,
@@ -116,7 +147,6 @@ fun RangingScreen(
                             isConnected = rangingData.isConnected
                         )
                         Spacer(modifier = Modifier.height(12.dp))
-                        // 详细数据
                         if (rangingData.isConnected) {
                             Text(
                                 text = "精度: ${rangingData.confidenceLevel}%",
@@ -139,7 +169,6 @@ fun RangingScreen(
                         modifier = Modifier.padding(horizontal = 24.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -156,7 +185,7 @@ fun RangingScreen(
                 }
             }
 
-            // 统计信息卡片
+            // 统计卡片
             if (distanceHistory.isNotEmpty()) {
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
@@ -167,42 +196,18 @@ fun RangingScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         val distances = distanceHistory.map { it.second }
-                        val minDist = distances.min()
-                        val maxDist = distances.max()
-                        val avgDist = distances.average()
-
-                        StatCard(
-                            label = "最近",
-                            value = formatDistance(rangingData.distanceCm),
-                            icon = Icons.Rounded.MyLocation,
-                            modifier = Modifier.weight(1f)
-                        )
-                        StatCard(
-                            label = "最短",
-                            value = formatDistance(minDist),
-                            icon = Icons.Rounded.ArrowDownward,
-                            modifier = Modifier.weight(1f)
-                        )
-                        StatCard(
-                            label = "最长",
-                            value = formatDistance(maxDist),
-                            icon = Icons.Rounded.ArrowUpward,
-                            modifier = Modifier.weight(1f)
-                        )
-                        StatCard(
-                            label = "平均",
-                            value = formatDistance(avgDist),
-                            icon = Icons.Rounded.Equalizer,
-                            modifier = Modifier.weight(1f)
-                        )
+                        StatCard("最近", formatDist(rangingData.distanceCm), Icons.Rounded.MyLocation, Modifier.weight(1f))
+                        StatCard("最短", formatDist(distances.min()), Icons.Rounded.ArrowDownward, Modifier.weight(1f))
+                        StatCard("最长", formatDist(distances.max()), Icons.Rounded.ArrowUpward, Modifier.weight(1f))
+                        StatCard("平均", formatDist(distances.average()), Icons.Rounded.Equalizer, Modifier.weight(1f))
                     }
                 }
             }
 
             // 错误信息
-            item {
-                val errorMsg = rangingData.errorMessage
-                if (errorMsg != null) {
+            val errorMsg = rangingData.errorMessage
+            if (errorMsg != null) {
+                item {
                     Spacer(modifier = Modifier.height(16.dp))
                     Card(
                         colors = CardDefaults.cardColors(
@@ -232,7 +237,7 @@ fun RangingScreen(
                 }
             }
 
-            // 停止测距按钮
+            // 停止按钮
             item {
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
@@ -245,24 +250,15 @@ fun RangingScreen(
                         .padding(horizontal = 24.dp)
                         .height(52.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Stop,
-                        contentDescription = null
-                    )
+                    Icon(imageVector = Icons.Rounded.Stop, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "停止测距",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Text("停止测距", style = MaterialTheme.typography.titleMedium)
                 }
             }
         }
     }
 }
 
-/**
- * 统计卡片
- */
 @Composable
 private fun StatCard(
     label: String,
@@ -275,35 +271,16 @@ private fun StatCard(
             modifier = Modifier.padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text(text = value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-/**
- * 距离变化折线图
- */
 @Composable
-private fun DistanceChart(
-    data: List<Pair<Long, Double>>,
-    modifier: Modifier = Modifier
-) {
+private fun DistanceChart(data: List<Pair<Long, Double>>, modifier: Modifier = Modifier) {
     if (data.size < 2) return
 
     val lineColor = Color(0xFF1976D2)
@@ -318,51 +295,27 @@ private fun DistanceChart(
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val padding = 4.dp.toPx()
+        val pad = 4.dp.toPx()
 
-        // 网格线
         for (i in 0..4) {
-            val y = padding + (h - 2 * padding) * i / 4f
-            drawLine(
-                color = gridColor,
-                start = Offset(padding, y),
-                end = Offset(w - padding, y),
-                strokeWidth = 1.dp.toPx()
-            )
+            val y = pad + (h - 2 * pad) * i / 4f
+            drawLine(gridColor, Offset(pad, y), Offset(w - pad, y), 1.dp.toPx())
         }
 
-        // 折线
         val path = Path()
         val fillPath = Path()
-
-        values.forEachIndexed { index, value ->
-            val x = padding + (w - 2 * padding) * index / (values.size - 1).toFloat()
-            val y = padding + (h - 2 * padding) * (1f - (value - minVal) / range)
-
-            if (index == 0) {
-                path.moveTo(x, y)
-                fillPath.moveTo(x, h - padding)
-                fillPath.lineTo(x, y)
-            } else {
-                path.lineTo(x, y)
-                fillPath.lineTo(x, y)
-            }
+        values.forEachIndexed { i, v ->
+            val x = pad + (w - 2 * pad) * i / (values.size - 1).toFloat()
+            val y = pad + (h - 2 * pad) * (1f - (v - minVal) / range)
+            if (i == 0) { path.moveTo(x, y); fillPath.moveTo(x, h - pad); fillPath.lineTo(x, y) }
+            else { path.lineTo(x, y); fillPath.lineTo(x, y) }
         }
-
-        // 填充区域
-        fillPath.lineTo(w - padding, h - padding)
-        fillPath.close()
+        fillPath.lineTo(w - pad, h - pad); fillPath.close()
         drawPath(fillPath, fillColor)
-
-        // 折线
-        drawPath(path, lineColor, style = Stroke(width = 2.5.dp.toPx()))
+        drawPath(path, lineColor, style = Stroke(2.5.dp.toPx()))
     }
 }
 
-private fun formatDistance(cm: Double): String {
-    return if (cm >= 100) {
-        String.format("%.1fm", cm / 100)
-    } else {
-        String.format("%.0fcm", cm)
-    }
+private fun formatDist(cm: Double): String {
+    return if (cm >= 100) String.format("%.1fm", cm / 100) else String.format("%.0fcm", cm)
 }

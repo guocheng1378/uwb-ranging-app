@@ -2,14 +2,14 @@ package com.uwb.ranging.uwb
 
 import android.content.Context
 import android.util.Log
-import androidx.core.uwb.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 
 /**
- * UWB 测距管理器
- * 封装 androidx.core.uwb API，处理控制器/受控端测距逻辑
+ * 多协议测距管理器
+ * 自动选择最优可用协议：FiRa > BLE RSSI
+ *
+ * 未来可扩展加入小米私有协议：
+ *   protocols.add(XiaomiRangingProtocol(context))
  */
 class UwbRangingManager(private val context: Context) {
 
@@ -17,16 +17,14 @@ class UwbRangingManager(private val context: Context) {
         private const val TAG = "UwbRangingManager"
     }
 
-    data class RangingData(
-        val distanceCm: Double = 0.0,
-        val azimuth: Double = 0.0,       // 水平角 (度)
-        val elevation: Double = 0.0,     // 仰角 (度)
-        val peerAddress: String = "",
-        val isConnected: Boolean = false,
-        val timestamp: Long = System.currentTimeMillis(),
-        val confidenceLevel: Int = 0,    // 置信度 0-100
-        val errorMessage: String? = null
+    // 按优先级排列的协议列表（高→低）
+    private val protocols: List<RangingProtocol> = listOf(
+        FiRaRangingProtocol(context),   // 优先级 100
+        BleRssiFallback(context)         // 优先级 10（降级）
+        // 未来：XiaomiRangingProtocol(context)  // 优先级 90
     )
+
+    private var activeProtocol: RangingProtocol? = null
 
     private val _rangingData = MutableStateFlow(RangingData())
     val rangingData: StateFlow<RangingData> = _rangingData.asStateFlow()
@@ -34,180 +32,68 @@ class UwbRangingManager(private val context: Context) {
     private val _isRanging = MutableStateFlow(false)
     val isRanging: StateFlow<Boolean> = _isRanging.asStateFlow()
 
-    private val _uwbAvailable = MutableStateFlow(false)
-    val uwbAvailable: StateFlow<Boolean> = _uwbAvailable.asStateFlow()
-
-    private var uwbManager: UwbManager? = null
-    private var clientSessionScope: UwbClientSessionScope? = null
+    private val _selectedProtocol = MutableStateFlow<String?>(null)
+    val selectedProtocol: StateFlow<String?> = _selectedProtocol.asStateFlow()
 
     /**
-     * 初始化 UWB 管理器
+     * 检查所有协议的可用性
      */
-    suspend fun initialize(): Boolean {
-        return try {
-            uwbManager = UwbManager.createInstance(context)
-
-            // 检查 UWB 硬件是否可用
-            val capabilities = uwbManager?.getRangingCapabilities()
-            if (capabilities != null) {
-                _uwbAvailable.value = true
-                Log.d(TAG, "UWB 可用 - 支持 AoA: ${capabilities.supportsAzimuthAngleMeasurement}, " +
-                        "支持距离: ${capabilities.supportsDistanceMeasurement}")
-                true
-            } else {
-                _uwbAvailable.value = false
-                _rangingData.value = _rangingData.value.copy(
-                    errorMessage = "UWB 硬件不可用"
-                )
-                false
-            }
-        } catch (e: UwbHardwareNotAvailableException) {
-            Log.e(TAG, "UWB 硬件不存在", e)
-            _uwbAvailable.value = false
-            _rangingData.value = _rangingData.value.copy(
-                errorMessage = "设备不支持 UWB 硬件"
-            )
-            false
-        } catch (e: UwbServiceNotAvailableException) {
-            Log.e(TAG, "UWB 服务不可用", e)
-            _uwbAvailable.value = false
-            _rangingData.value = _rangingData.value.copy(
-                errorMessage = "UWB 服务暂不可用，请检查系统更新"
-            )
-            false
-        } catch (e: Exception) {
-            Log.e(TAG, "UWB 初始化失败", e)
-            _rangingData.value = _rangingData.value.copy(
-                errorMessage = "UWB 初始化失败: ${e.message}"
-            )
-            false
-        }
+    suspend fun checkAvailability(): Map<String, Boolean> {
+        return protocols.associate { it.protocolName to it.isAvailable() }
     }
 
     /**
-     * 作为控制器发起测距
-     * @param peerAddress 对端 UWB 地址
-     * @param peerDevice 对端 UWB 设备信息
+     * 协商协议：取双方都支持的最优协议
+     * @param myProtocols 本机支持的协议名列表
+     * @param peerProtocols 对端支持的协议名列表
      */
-    suspend fun startRangingAsController(
-        peerAddress: UwbAddress,
-        peerDevice: UwbDevice
-    ) {
-        try {
-            val manager = uwbManager ?: throw IllegalStateException("UWB 未初始化")
+    fun negotiateProtocol(
+        myProtocols: List<String>,
+        peerProtocols: List<String>
+    ): RangingProtocol? {
+        val commonProtocols = myProtocols.intersect(peerProtocols.toSet())
 
-            // 获取或创建控制器会话
-            val sessionScope = manager.controllerSessionScope()
-
-            // 配置测距参数
-            val rangingParams = RangingParameters(
-                uwbConfigType = RangingParameters.CONFIG_UNICAST_DS_TWR,
-                sessionId = 0, // 自动生成
-                subSessionId = 0,
-                sessionKeyInfo = byteArrayOf(),
-                subSessionKeyInfo = byteArrayOf(),
-                complexChannel = null,
-                peerDevices = listOf(peerDevice),
-                updateRateType = RangingParameters.RANGING_UPDATE_RATE_FREQUENT
-            )
-
-            // 打开会话
-            val rangingSession = sessionScope.openSession(rangingParams)
-
-            // 监听测距结果
-            rangingSession.rangingResults.collect { results ->
-                for (result in results) {
-                    when (result) {
-                        is RangingResult.RangingResultPosition -> {
-                            val position = result.position
-                            val distance = position.distance?.value?.toDouble() ?: 0.0
-                            val azimuth = position.azimuth?.value?.toDouble() ?: 0.0
-                            val elevation = position.elevation?.value?.toDouble() ?: 0.0
-                            val confidence = position.distance?.confidence ?: 0
-
-                            _rangingData.value = RangingData(
-                                distanceCm = distance,
-                                azimuth = azimuth,
-                                elevation = elevation,
-                                peerAddress = result.device.address.toString(),
-                                isConnected = true,
-                                timestamp = System.currentTimeMillis(),
-                                confidenceLevel = confidence
-                            )
-
-                            Log.d(TAG, "距离: ${distance}cm, 方位角: ${azimuth}°, 仰角: ${elevation}°")
-                        }
-                        is RangingResult.RangingResultPeerDisconnected -> {
-                            Log.d(TAG, "对端设备断开: ${result.device}")
-                            _rangingData.value = _rangingData.value.copy(
-                                isConnected = false,
-                                errorMessage = "对端设备已断开"
-                            )
-                        }
-                    }
-                }
-            }
-
-            // 启动测距
-            rangingSession.startRanging(rangingParams)
-            clientSessionScope = sessionScope
-            _isRanging.value = true
-
-            Log.d(TAG, "UWB 测距已启动 (控制器模式)")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "启动测距失败", e)
-            _rangingData.value = _rangingData.value.copy(
-                errorMessage = "启动测距失败: ${e.message}"
-            )
-        }
+        return protocols
+            .filter { it.protocolName in commonProtocols || protocolToId(it.protocolName) in commonProtocols }
+            .maxByOrNull { it.priority }
     }
 
     /**
-     * 作为受控端响应测距
+     * 自动选择最优可用协议并开始测距
      */
-    suspend fun startRangingAsControlee() {
-        try {
-            val manager = uwbManager ?: throw IllegalStateException("UWB 未初始化")
+    suspend fun startRanging(peer: PeerDevice) {
+        // 按优先级尝试每个协议
+        for (protocol in protocols.sortedByDescending { it.priority }) {
+            try {
+                val available = protocol.isAvailable()
+                Log.d(TAG, "检查协议 [${protocol.protocolName}]: 可用=$available")
 
-            val sessionScope = manager.controleeSessionScope()
+                if (available) {
+                    activeProtocol = protocol
+                    _selectedProtocol.value = protocol.protocolName
+                    _isRanging.value = true
 
-            // 受控端等待控制器发起测距
-            sessionScope.rangingResults.collect { results ->
-                for (result in results) {
-                    when (result) {
-                        is RangingResult.RangingResultPosition -> {
-                            val position = result.position
-                            val distance = position.distance?.value?.toDouble() ?: 0.0
-                            val azimuth = position.azimuth?.value?.toDouble() ?: 0.0
-                            val elevation = position.elevation?.value?.toDouble() ?: 0.0
+                    Log.d(TAG, "使用协议: ${protocol.protocolName}")
 
-                            _rangingData.value = RangingData(
-                                distanceCm = distance,
-                                azimuth = azimuth,
-                                elevation = elevation,
-                                peerAddress = result.device.address.toString(),
-                                isConnected = true,
-                                timestamp = System.currentTimeMillis()
-                            )
-                        }
-                        is RangingResult.RangingResultPeerDisconnected -> {
-                            _rangingData.value = _rangingData.value.copy(
-                                isConnected = false,
-                                errorMessage = "对端设备已断开"
-                            )
-                        }
+                    // 收集测距数据
+                    protocol.startRanging(peer).collect { data ->
+                        _rangingData.value = data
                     }
+
+                    // 如果 flow 结束了，说明断开了
+                    break
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "协议 [${protocol.protocolName}] 启动失败，尝试下一个", e)
+                continue
             }
+        }
 
-            _isRanging.value = true
-            Log.d(TAG, "UWB 测距已启动 (受控端模式)")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "受控端启动失败", e)
-            _rangingData.value = _rangingData.value.copy(
-                errorMessage = "受控端启动失败: ${e.message}"
+        // 所有协议都失败了
+        if (!_isRanging.value) {
+            _rangingData.value = RangingData(
+                isConnected = false,
+                errorMessage = "所有测距协议均不可用"
             )
         }
     }
@@ -216,22 +102,28 @@ class UwbRangingManager(private val context: Context) {
      * 停止测距
      */
     fun stopRanging() {
-        try {
-            clientSessionScope?.close()
-            clientSessionScope = null
-            _isRanging.value = false
-            _rangingData.value = RangingData()
-            Log.d(TAG, "UWB 测距已停止")
-        } catch (e: Exception) {
-            Log.e(TAG, "停止测距失败", e)
-        }
+        activeProtocol?.stopRanging()
+        activeProtocol = null
+        _isRanging.value = false
+        _selectedProtocol.value = null
+        _rangingData.value = RangingData()
     }
 
-    fun getCapabilities(): RangingCapabilities? {
-        return try {
-            uwbManager?.getRangingCapabilities()
-        } catch (e: Exception) {
-            null
+    /**
+     * 获取本机支持的协议 ID 列表（用于 BLE 协商广播）
+     */
+    suspend fun getSupportedProtocolIds(): List<String> {
+        return protocols
+            .filter { it.isAvailable() }
+            .map { protocolToId(it.protocolName) }
+    }
+
+    private fun protocolToId(name: String): String {
+        return when (name) {
+            "FiRa 标准 UWB" -> "fira"
+            "小米 UWB" -> "xiaomi_uwb"
+            "BLE RSSI 估算" -> "ble_rssi"
+            else -> name
         }
     }
 }

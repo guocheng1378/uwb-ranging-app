@@ -13,6 +13,9 @@
     <!-- UWB -->
     <uses-permission android:name="android.permission.UWB_RANGING" />
 
+    <!-- Android 16+ 通用测距权限 -->
+    <uses-permission android:name="android.permission.RANGING" />
+
     <!-- Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
