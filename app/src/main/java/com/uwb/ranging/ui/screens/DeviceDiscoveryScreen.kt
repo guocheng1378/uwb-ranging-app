@@ -38,8 +38,11 @@ fun DeviceDiscoveryScreen(
             val bluetoothConnect = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
             } else true
+            val bluetoothAdvertise = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else true
             val location = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            bluetoothScan && bluetoothConnect && location
+            bluetoothScan && bluetoothConnect && bluetoothAdvertise && location
         }
     }.value
 
@@ -99,7 +102,23 @@ fun DeviceDiscoveryScreen(
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(onClick = onRequestPermissions) {
+                        TextButton(onClick = {
+                            // 先尝试系统权限弹窗
+                            onRequestPermissions()
+                            // 若用户曾勾选"不再询问"，弹窗不会出现，延迟后引导去设置
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                // 再次检查，若仍无权限则跳转设置
+                                val stillMissing = !actuallyHasPermissions
+                                if (stillMissing) {
+                                    val intent = android.content.Intent(
+                                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        android.net.Uri.fromParts("package", context.packageName, null)
+                                    )
+                                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    context.startActivity(intent)
+                                }
+                            }, 600)
+                        }) {
                             Text("授权")
                         }
                     }
