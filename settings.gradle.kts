@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "UWB Ranging"
-include ':app'
+include(":app")
