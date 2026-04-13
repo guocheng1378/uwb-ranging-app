@@ -60,13 +60,13 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // UWB
-    implementation("androidx.core:uwb:1.0.0-alpha05")
+    implementation("androidx.core:uwb:1.0.0-rc01")
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.6")
 
     // Google Play Services Nearby (for UWB on some devices)
-    implementation("com.google.android.gms:play-services-nearby:19.0.1")
+    implementation("com.google.android.gms:play-services-nearby:19.3.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
