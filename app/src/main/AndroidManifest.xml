@@ -14,13 +14,13 @@
     <uses-permission android:name="android.permission.UWB_RANGING" />
 
     <!-- Android 16+ 通用测距权限 -->
-    <uses-permission android:name="android.permission.RANGING" />
+    <uses-permission android:name="android.permission.RANGING" android:maxSdkVersion="36" />
 
     <!-- Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
-    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <application
         android:allowBackup="true"

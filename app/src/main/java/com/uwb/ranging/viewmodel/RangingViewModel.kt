@@ -93,7 +93,10 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
                 add(Manifest.permission.BLUETOOTH_ADVERTISE)
             }
             add(Manifest.permission.ACCESS_FINE_LOCATION)
-            add(Manifest.permission.UWB_RANGING)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            if (Build.VERSION.SDK_INT >= 33) {
+                add("android.permission.UWB_RANGING")
+            }
         }.toTypedArray()
         return permissions.all { hasPermission(it) }
     }

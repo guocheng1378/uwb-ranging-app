@@ -30,9 +30,11 @@ class MainActivity : ComponentActivity() {
                 add(Manifest.permission.BLUETOOTH_ADVERTISE)
             }
             add(Manifest.permission.ACCESS_FINE_LOCATION)
-            add(Manifest.permission.UWB_RANGING)
-            // Android 16+ 新增的通用测距权限（compileSdk 34 不包含此字段，运行时检查）
-            // if (Build.VERSION.SDK_INT >= 36) add(Manifest.permission.RANGING)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            // UWB_RANGING 需要 API 33+ (Android 13)
+            if (Build.VERSION.SDK_INT >= 33) {
+                add("android.permission.UWB_RANGING")
+            }
         }.toTypedArray()
 
     private var permissionsGranted = false
@@ -56,7 +58,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // 请求权限
-        permissionLauncher.launch(requiredPermissions)
+        val perms = requiredPermissions
+        if (perms.isNotEmpty()) {
+            permissionLauncher.launch(perms)
+        }
 
         setContent {
             UWBRangingTheme {
