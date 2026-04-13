@@ -18,7 +18,9 @@ import com.uwb.ranging.ble.BleDiscovery
 fun DeviceDiscoveryScreen(
     bleDiscovery: BleDiscovery,
     onDeviceSelected: (String) -> Unit,
-    availableProtocols: Map<String, Boolean>
+    availableProtocols: Map<String, Boolean>,
+    hasPermissions: Boolean = true,
+    onRequestPermissions: () -> Unit = {}
 ) {
     val discoveredDevices by bleDiscovery.discoveredDevices.collectAsState()
     val isScanning by bleDiscovery.isScanning.collectAsState()
@@ -46,6 +48,47 @@ fun DeviceDiscoveryScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // 权限提示
+            if (!hasPermissions) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "缺少必要权限",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = "需要蓝牙和位置权限才能扫描设备",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(onClick = onRequestPermissions) {
+                            Text("授权")
+                        }
+                    }
+                }
+            }
+
             // 协议可用性卡片
             if (availableProtocols.isNotEmpty()) {
                 Card(
@@ -108,8 +151,20 @@ fun DeviceDiscoveryScreen(
                         if (isScanning) {
                             bleDiscovery.stopScanning()
                         } else {
+                            if (!hasPermissions) {
+                                onRequestPermissions()
+                                return@FilledTonalButton
+                            }
+                            if (!bleDiscovery.isBluetoothEnabled()) {
+                                return@FilledTonalButton
+                            }
                             bleDiscovery.clearDevices()
-                            bleDiscovery.startScanning()
+                            try {
+                                bleDiscovery.startAdvertising()
+                                bleDiscovery.startScanning()
+                            } catch (e: Exception) {
+                                android.util.Log.e("DiscoveryScreen", "扫描启动失败", e)
+                            }
                         }
                     }
                 ) {
@@ -217,7 +272,7 @@ private fun DeviceCard(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1)) {
                 Text(
                     text = device.name,
                     style = MaterialTheme.typography.titleMedium,

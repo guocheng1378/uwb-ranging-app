@@ -35,10 +35,13 @@ class MainActivity : ComponentActivity() {
             // if (Build.VERSION.SDK_INT >= 36) add(Manifest.permission.RANGING)
         }.toTypedArray()
 
+    private var permissionsGranted = false
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.values.all { it }
+        permissionsGranted = allGranted
         if (!allGranted) {
             val denied = permissions.filter { !it.value }.keys
             Toast.makeText(
@@ -72,6 +75,9 @@ class MainActivity : ComponentActivity() {
         viewModel: RangingViewModel = viewModel()
     ) {
         val navController = rememberNavController()
+        val hasPermissions by remember {
+            derivedStateOf { viewModel.hasRequiredPermissions() }
+        }
 
         NavHost(
             navController = navController,
@@ -87,7 +93,9 @@ class MainActivity : ComponentActivity() {
                             launchSingleTop = true
                         }
                     },
-                    availableProtocols = viewModel.availableProtocols.collectAsState().value
+                    availableProtocols = viewModel.availableProtocols.collectAsState().value,
+                    hasPermissions = hasPermissions,
+                    onRequestPermissions = { permissionLauncher.launch(requiredPermissions) }
                 )
             }
 

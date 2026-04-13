@@ -66,40 +66,40 @@ class BleDiscovery(private val context: Context) {
             return
         }
 
-        val scanFilter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(SERVICE_UUID))
-            .build()
-
-        val scanSettings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
-
-        scanCallback = object : ScanCallback() {
-            override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val device = result.device
-                val name = device.name ?: "未知设备"
-                val address = device.address
-
-                val discovered = DiscoveredDevice(
-                    address = address,
-                    name = name,
-                    rssi = result.rssi
-                )
-
-                val current = _discoveredDevices.value.toMutableMap()
-                current[address] = discovered
-                _discoveredDevices.value = current
-
-                Log.d(TAG, "发现设备: $name ($address) RSSI: ${result.rssi}")
-            }
-
-            override fun onScanFailed(errorCode: Int) {
-                Log.e(TAG, "扫描失败: $errorCode")
-                _isScanning.value = false
-            }
-        }
-
         try {
+            val scanFilter = ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(SERVICE_UUID))
+                .build()
+
+            val scanSettings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build()
+
+            scanCallback = object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    val device = result.device
+                    val name = device.name ?: "未知设备"
+                    val address = device.address
+
+                    val discovered = DiscoveredDevice(
+                        address = address,
+                        name = name,
+                        rssi = result.rssi
+                    )
+
+                    val current = _discoveredDevices.value.toMutableMap()
+                    current[address] = discovered
+                    _discoveredDevices.value = current
+
+                    Log.d(TAG, "发现设备: $name ($address) RSSI: ${result.rssi}")
+                }
+
+                override fun onScanFailed(errorCode: Int) {
+                    Log.e(TAG, "扫描失败: $errorCode")
+                    _isScanning.value = false
+                }
+            }
+
             scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
             _isScanning.value = true
             Log.d(TAG, "开始 BLE 扫描")
@@ -109,6 +109,9 @@ class BleDiscovery(private val context: Context) {
         } catch (e: IllegalStateException) {
             Log.e(TAG, "蓝牙未开启或不可用", e)
             scanCallback = null
+        } catch (e: Exception) {
+            Log.e(TAG, "扫描启动异常", e)
+            scanCallback = null
         }
     }
 
@@ -116,7 +119,11 @@ class BleDiscovery(private val context: Context) {
      * 停止 BLE 扫描
      */
     fun stopScanning() {
-        scanCallback?.let { bleScanner?.stopScan(it) }
+        try {
+            scanCallback?.let { bleScanner?.stopScan(it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "停止扫描异常", e)
+        }
         scanCallback = null
         _isScanning.value = false
         Log.d(TAG, "停止 BLE 扫描")
@@ -133,36 +140,39 @@ class BleDiscovery(private val context: Context) {
             return
         }
 
-        val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-            .setConnectable(false)  // 不可连接，仅广播发现
-            .setTimeout(0)
-            .build()
-
-        val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
-            .addServiceUuid(ParcelUuid(SERVICE_UUID))
-            .build()
-
-        advertiseCallback = object : AdvertiseCallback() {
-            override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                Log.d(TAG, "BLE 广播成功")
-                _isAdvertising.value = true
-            }
-
-            override fun onStartFailure(errorCode: Int) {
-                Log.e(TAG, "BLE 广播失败: $errorCode")
-                _isAdvertising.value = false
-            }
-        }
-
         try {
+            val settings = AdvertiseSettings.Builder()
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+                .setConnectable(false)  // 不可连接，仅广播发现
+                .setTimeout(0)
+                .build()
+
+            val data = AdvertiseData.Builder()
+                .setIncludeDeviceName(true)
+                .addServiceUuid(ParcelUuid(SERVICE_UUID))
+                .build()
+
+            advertiseCallback = object : AdvertiseCallback() {
+                override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
+                    Log.d(TAG, "BLE 广播成功")
+                    _isAdvertising.value = true
+                }
+
+                override fun onStartFailure(errorCode: Int) {
+                    Log.e(TAG, "BLE 广播失败: $errorCode")
+                    _isAdvertising.value = false
+                }
+            }
+
             adv.startAdvertising(settings, data, advertiseCallback)
         } catch (e: SecurityException) {
             Log.e(TAG, "缺少蓝牙权限", e)
             advertiseCallback = null
         } catch (e: IllegalStateException) {
             Log.e(TAG, "蓝牙未开启或不可用", e)
+            advertiseCallback = null
+        } catch (e: Exception) {
+            Log.e(TAG, "广播启动异常", e)
             advertiseCallback = null
         }
     }
@@ -171,7 +181,11 @@ class BleDiscovery(private val context: Context) {
      * 停止 BLE 广播
      */
     fun stopAdvertising() {
-        advertiseCallback?.let { advertiser?.stopAdvertising(it) }
+        try {
+            advertiseCallback?.let { advertiser?.stopAdvertising(it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "停止广播异常", e)
+        }
         advertiseCallback = null
         _isAdvertising.value = false
     }
