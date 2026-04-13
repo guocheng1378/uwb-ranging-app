@@ -294,7 +294,7 @@ fun DeviceDiscoveryScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "请确保对方手机也打开了此 App",
+                            text = "打开蓝牙，扫描附近的蓝牙设备",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -318,12 +318,17 @@ fun DeviceDiscoveryScreen(
                     }
                 }
             } else {
+                // 同 App 设备优先，按 RSSI 排序
+                val sortedDevices = discoveredDevices.values.sortedWith(
+                    compareByDescending<BleDiscovery.DiscoveredDevice> { it.isSameApp }
+                        .thenByDescending { it.rssi }
+                )
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(
-                        items = discoveredDevices.values.toList(),
+                        items = sortedDevices,
                         key = { it.address }
                     ) { device ->
                         DeviceCard(
@@ -352,14 +357,17 @@ private fun DeviceCard(
         ) {
             Surface(
                 shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primaryContainer,
+                color = if (device.isSameApp) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.size(48.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Smartphone,
+                    imageVector = if (device.isSameApp) Icons.Rounded.Smartphone
+                                  else Icons.Rounded.Bluetooth,
                     contentDescription = null,
                     modifier = Modifier.padding(12.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    tint = if (device.isSameApp) MaterialTheme.colorScheme.onPrimaryContainer
+                           else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -371,11 +379,29 @@ private fun DeviceCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
-                    text = device.address,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (device.isSameApp) {
+                        Icon(
+                            imageVector = Icons.Rounded.CheckCircle,
+                            contentDescription = "同 App",
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "可测距",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = device.address,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Column(horizontalAlignment = Alignment.End) {

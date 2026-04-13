@@ -6,7 +6,6 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.*
 import android.content.Context
-import android.os.ParcelUuid
 import android.util.Log
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +31,8 @@ class BleDiscovery(private val context: Context) {
         val address: String,
         val name: String,
         val rssi: Int,
-        val isUwbCapable: Boolean = true
+        val isUwbCapable: Boolean = true,
+        val isSameApp: Boolean = false  // 是否是运行同 App 的设备
     )
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -93,29 +93,29 @@ class BleDiscovery(private val context: Context) {
             scanCallback = object : ScanCallback() {
                 override fun onScanResult(callbackType: Int, result: ScanResult) {
                     val device = result.device
-                    val name = device.name ?: "未知设备"
                     val address = device.address
+                    val name = device.name
 
-                    // 无过滤模式下，手动检查是否是我们 App 的设备
+                    // 判断是否是运行同 App 的设备
                     val serviceUuids = result.scanRecord?.serviceUuids
-                    val isOurDevice = serviceUuids?.any { it.uuid == SERVICE_UUID } == true
+                    val isSameApp = serviceUuids?.any { it.uuid == SERVICE_UUID } == true
                             || result.scanRecord?.serviceData?.keys?.any { it.uuid == SERVICE_UUID } == true
-                            || result.scanRecord?.advertiseFlags?.let { true } == true
 
-                    // 放宽过滤：只要广播中包含我们的 UUID 或者设备名不为空就显示
-                    if (!isOurDevice && serviceUuids != null) return
+                    // 跳过完全无信息的设备（无名称且非同 App）
+                    if (name.isNullOrBlank() && !isSameApp) return
 
                     val discovered = DiscoveredDevice(
                         address = address,
-                        name = name,
-                        rssi = result.rssi
+                        name = name ?: address,
+                        rssi = result.rssi,
+                        isSameApp = isSameApp
                     )
 
                     val current = _discoveredDevices.value.toMutableMap()
                     current[address] = discovered
                     _discoveredDevices.value = current
 
-                    Log.d(TAG, "发现设备: $name ($address) RSSI: ${result.rssi}")
+                    Log.d(TAG, "发现设备: ${name ?: address} ($address) RSSI: ${result.rssi} sameApp=$isSameApp")
                 }
 
                 override fun onScanFailed(errorCode: Int) {
@@ -124,16 +124,8 @@ class BleDiscovery(private val context: Context) {
                 }
             }
 
-            // 先尝试带 UUID 过滤的扫描，失败则降级为无过滤扫描
-            try {
-                val scanFilter = ScanFilter.Builder()
-                    .setServiceUuid(ParcelUuid(SERVICE_UUID))
-                    .build()
-                scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
-            } catch (e: Exception) {
-                Log.w(TAG, "带 UUID 过滤扫描失败，降级为无过滤: ${e.message}")
-                scanner.startScan(scanCallback)
-            }
+            // 无过滤扫描，发现所有 BLE 设备
+            scanner.startScan(scanSettings, scanCallback)
             _isScanning.value = true
             Log.d(TAG, "开始 BLE 扫描")
         } catch (e: SecurityException) {
