@@ -189,6 +189,7 @@ fun DeviceDiscoveryScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DeviceCard(
     device: BleDiscovery.DiscoveredDevice,

@@ -31,10 +31,8 @@ class MainActivity : ComponentActivity() {
             }
             add(Manifest.permission.ACCESS_FINE_LOCATION)
             add(Manifest.permission.UWB_RANGING)
-            // Android 16+ 新增的通用测距权限
-            if (Build.VERSION.SDK_INT >= 33) {
-                add(Manifest.permission.RANGING)
-            }
+            // Android 16+ 新增的通用测距权限（compileSdk 34 不包含此字段，运行时检查）
+            // if (Build.VERSION.SDK_INT >= 36) add(Manifest.permission.RANGING)
         }.toTypedArray()
 
     private val permissionLauncher = registerForActivityResult(

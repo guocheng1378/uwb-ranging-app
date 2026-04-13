@@ -120,7 +120,6 @@ class BleDiscovery(private val context: Context) {
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
             .setConnectable(false)  // 不可连接，仅广播发现
             .setTimeout(0)
-            .setTxPower(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
         val data = AdvertiseData.Builder()

@@ -69,7 +69,7 @@ class BleRssiFallback(private val context: Context) : RangingProtocol {
                     val distanceM = estimateDistance(avgRssi)
                     val distanceCm = distanceM * 100
 
-                    trySendBlocking(RangingData(
+                    trySend(RangingData(
                         distanceCm = distanceCm,
                         azimuth = 0.0,  // BLE 无法提供角度
                         elevation = 0.0,
@@ -83,7 +83,7 @@ class BleRssiFallback(private val context: Context) : RangingProtocol {
 
                 override fun onScanFailed(errorCode: Int) {
                     Log.e(TAG, "BLE 扫描失败: $errorCode")
-                    trySendBlocking(RangingData(
+                    trySend(RangingData(
                         isConnected = false,
                         protocolUsed = protocolName,
                         errorMessage = "BLE RSSI 扫描失败: $errorCode"

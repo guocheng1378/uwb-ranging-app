@@ -94,10 +94,7 @@ class RangingViewModel(application: Application) : AndroidViewModel(application)
             }
             add(Manifest.permission.ACCESS_FINE_LOCATION)
             add(Manifest.permission.UWB_RANGING)
-            if (Build.VERSION.SDK_INT >= 33) {  // Android 16 preview may use 33
-                add(Manifest.permission.RANGING)
-            }
-        }
+        }.toTypedArray()
         return permissions.all { hasPermission(it) }
     }
 
